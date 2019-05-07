@@ -1,0 +1,24 @@
+{
+  "name": "ossr",
+  "version": "1.0.2",
+  "description": "",
+  "main": "./bin/ossr.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "ossr": "./bin/ossr.js"
+  },
+  "engines": {
+    "node": ">=4.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "agentkeepalive": "^4.0.2",
+    "ali-oss": "^6.1.1",
+    "chalk": "^2.4.2",
+    "commander": "^2.20.0"
+  }
+}
