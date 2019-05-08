@@ -26,10 +26,9 @@ if (fs.existsSync(ossConfigFile)) {
 
 program
   .version('0.1.0', '-v, --version')
-  .arguments('<local-path>')
-  .usage(`${chalk.green('<local-path> [-p online-path]')} [...options]`)
+  .arguments('<local-path> [online-path]')
+  .usage(`${chalk.green('<local-path> [online-path]')} [...options]`)
 
-  .option('-p, --onlinePath [onlinePath]', 'set upload online pathname')
   .option('-r, --region [region]', 'set config region')
   .option('-i, --accessKeyId [accessKeyId]', 'set config accessKeyId')
   .option('-s, --accessKeySecret [accessKeySecret]', 'set config accessKeySecret')
@@ -38,10 +37,10 @@ program
   .option('-e, --endpoint [endpoint]', 'set config custom domain name')
 
   .option('-c, --command', 'use command line', function(){})
-  .action(function(localPath) {
+  .action(function(localPath, onlinePath) {
     updateOSSClient()
     if (ossConfig.accessKeyId && ossConfig.accessKeySecret && ossConfig.bucket ) {
-      uploadFileOrDir(localPath, program.onlinePath || '/')
+      uploadFileOrDir(localPath, (typeof onlinePath === 'string' && onlinePath) ? onlinePath : '/')
     } else {
       console.error("Please set config <accessKeyId> and <accessKeySecret> <bucket>.")
     }
