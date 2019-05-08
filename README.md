@@ -1,6 +1,6 @@
 # OSSR
 ## Inistall
-`npm i  ossr`
+`npm i -g  ossr`
 
 ## Config
 
@@ -10,7 +10,7 @@
 
 **Advance**
 
-`ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket> -t <timeout> -r <region> -e <endpoint>`
+`ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket> -e <endpoint> -r <region> -t <timeout>`
 
 ## Usage
 ### Upload file to root path
