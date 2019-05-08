@@ -35,22 +35,21 @@ program
   .option('-s, --accessKeySecret [accessKeySecret]', 'set config accessKeySecret')
   .option('-b, --bucket [bucket]', 'set config bucket')
   .option('-t, --timeout [timeout]', 'set config timeout')
+  .option('-e, --endpoint [endpoint]', 'set config custom domain name')
 
-  .option('-c, --command', 'use command line', () => {
-
-  })
+  .option('-c, --command', 'use command line', function(){})
   .action(function(localPath) {
     updateOSSClient()
-    if (ossConfig.accessKeyId && ossConfig.accessKeySecret) {
+    if (ossConfig.accessKeyId && ossConfig.accessKeySecret && ossConfig.bucket ) {
       uploadFileOrDir(localPath, program.onlinePath || '/')
     } else {
-      console.error("Please set config <accessKeyId> and <accessKeySecret>.")
+      console.error("Please set config <accessKeyId> and <accessKeySecret> <bucket>.")
     }
   })
 
 
 function updateOSSClient() {
- var keys = ['accessKeyId', 'accessKeySecret', 'region', 'bucket', 'timeout']
+ var keys = ['accessKeyId', 'accessKeySecret', 'region', 'bucket', 'timeout', 'endpoint']
   keys.forEach(key => {
     if (program[key]) {
       ossConfig[key] = program[key]
@@ -60,6 +59,9 @@ function updateOSSClient() {
     ossConfig.agent = new AgentKeepAlive({
       timeout: ossConfig.timeout
     })
+  }
+  if (ossConfig.endpoint) {
+    ossConfig.cname = true
   }
 
   if (ossConfig.accessKeyId && ossConfig.accessKeySecret) {
@@ -86,8 +88,8 @@ function uploadToOSS(absolutePath = '', remotePath = '', options) {
 
   ossClient.putStream(`${fullPath}`, stream)
     .then(res => {
-      console.log(`${absolutePath} is uploaded.`)
-      console.log(`url is https://storage.zego.im${fullPath}`)
+      console.log('-- local  path is : ' + chalk.yellow(absolutePath))
+      console.log('-- remote path is : '  + chalk.green(res.res.requestUrls))
     })
     .catch(err => console.error(err))
 }
@@ -102,6 +104,10 @@ function uploadFileOrDir(uploadPath = '', remotePath = '', options) {
 
   if (isDir) {
     var files = fs.readdirSync(absolutePath)
+    var isFile = remotePath.slice(-1) !== '/'
+    if (isFile) {
+      remotePath = remotePath + '/'
+    }
     files.forEach(file => {
       uploadToOSS(path.join(absolutePath, file), remotePath, options)
     })

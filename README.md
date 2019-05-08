@@ -5,10 +5,10 @@
 ## Config
 
 **Simplify**
-`ossr -i <accessKeyId> -s <accessKeySecret>`
+`ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket>`
 
 **Advance**
-`ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket> -t <timeout> -r <region>`
+`ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket> -t <timeout> -r <region> -e <endpoint>`
 
 ## Usage
 ### Upload to root path
