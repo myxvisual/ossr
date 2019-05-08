@@ -12,7 +12,7 @@
 
 `ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket> -e <endpoint> -r <region> -t <timeout>`
 
-## Usage
+## Upload
 ### Upload file to root path
 `ossr ./localFile.jpg` ------> `https://xxxx/localFile.jpg`
 ### Upload folder to root path
@@ -23,3 +23,11 @@
 
 ### Upload folder with rename
 `ossr ./localFolder onlineFolder/` ------> `https://xxxx/onlineFolder/<localFolder**>`
+
+## Delete
+`ossr -d remoteFileOrFolder`
+
+## List
+`ossr -l`
+
+`ossr -l folder/`

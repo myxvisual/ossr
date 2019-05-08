@@ -2,6 +2,7 @@
 'use strict'
 
 var { createReadStream } = require('fs')
+var inquirer = require('inquirer')
 var path = require('path')
 var fs = require('fs')
 var chalk = require('chalk')
@@ -16,6 +17,7 @@ var ossConfig = {
   accessKeyId: '',
   accessKeySecret: ''
 }
+var listAll = true
 if (fs.existsSync(ossConfigFile)) {
   try {
     ossConfig = JSON.parse(fs.readFileSync(ossConfigFile, { encoding: 'utf8' }))
@@ -29,6 +31,65 @@ program
   .arguments('<local-path> [online-path]')
   .usage(`${chalk.green('<local-path> [online-path]')} [...options]`)
 
+  .option('-d, --delete [deletePath]', 'delete remote exists file', function(deletePath) {
+    function deleteAllPath(currDeletePath) {
+      if (currDeletePath) {
+        var isFile = currDeletePath.slice(-1) !== '/'
+        if (isFile) {
+          checkConfig(function() {
+            ossClient.delete(currDeletePath)
+          })
+        } else {
+          checkConfig(function() {
+            ossClient.list(({ prefix: currDeletePath, delimiter: '/' }))
+              .then(res => {
+                if (res.objects) {
+                  res.objects.forEach(obj => {
+                    ossClient.delete(obj.name)
+                  })
+                }
+                if (res.prefixes) {
+                  res.prefixes.forEach(newPath => {
+                    deleteAllPath(newPath)
+                  })
+                }
+              })
+              .catch(err => {
+                console.error(err)
+              })
+          })
+        }
+      }
+    }
+    inquirer.prompt({
+      type: 'confirm',
+      name: 'confirmDelete',
+      message: 'Make sure to remote the path: ' + chalk.red(deletePath)
+    }).then(answers => {
+      if (answers.confirmDelete) {
+        deleteAllPath(deletePath)
+      }
+    })
+  })
+  .option('-l, --list [prefix]', 'list remote prefix files', function(prefix) {
+    listAll = false
+    checkConfig(function() {
+      ossClient.list(({ prefix, delimiter: '/' })).then(res => {
+          if (res.objects || res.prefixes) {
+            console.log({
+              prefixes: res.prefixes,
+              objecst: res.objects ? res.objects.map(obj => obj.url) : []
+            })
+          } else {
+            console.error(chalk.red('notfound ' + prefix))
+          }
+        })
+        .catch(err => {
+          console.error(err)
+        })
+    })
+  })
+
   .option('-r, --region [region]', 'set config region')
   .option('-i, --accessKeyId [accessKeyId]', 'set config accessKeyId')
   .option('-s, --accessKeySecret [accessKeySecret]', 'set config accessKeySecret')
@@ -36,16 +97,23 @@ program
   .option('-t, --timeout [timeout]', 'set config timeout')
   .option('-e, --endpoint [endpoint]', 'set config custom domain name')
 
-  .option('-c, --command', 'use command line', function(){})
+  .option('-c, --command', 'use command line', function() {})
   .action(function(localPath, onlinePath) {
-    updateOSSClient()
-    if (ossConfig.accessKeyId && ossConfig.accessKeySecret && ossConfig.bucket ) {
+    checkConfig(function() {
       uploadFileOrDir(localPath, (typeof onlinePath === 'string' && onlinePath) ? onlinePath : '/')
-    } else {
-      console.error("Please set config <accessKeyId> and <accessKeySecret> <bucket>.")
-    }
+    })
   })
 
+function checkConfig(success) {
+  if (ossConfig.accessKeyId && ossConfig.accessKeySecret && ossConfig.bucket ) {
+    if (success && typeof success === 'function') {
+      updateOSSClient()
+      success()
+    }
+  } else {
+    console.error("Please set config <accessKeyId> and <accessKeySecret> <bucket>.")
+  }
+}
 
 function updateOSSClient() {
  var keys = ['accessKeyId', 'accessKeySecret', 'region', 'bucket', 'timeout', 'endpoint']
@@ -68,10 +136,27 @@ function updateOSSClient() {
     fs.writeFileSync(ossConfigFile,  JSON.stringify(ossConfig, null, 2), { encoding: 'utf-8' })
   }
 }
-
 program.parse(argv)
-updateOSSClient()
 
+if (listAll && argv.includes('-l')) {
+  checkConfig(function() {
+    ossClient.list(({ prefix: '', delimiter: '/' })).then(res => {
+        if (res.objects) {
+          console.log({
+            prefixes: res.prefixes,
+            objecst: res.objects.map(obj => obj.url)
+          })
+        } else {
+          console.error(chalk.red('notfound ' + '/'))
+        }
+      })
+      .catch(err => {
+        console.error(err)
+      })
+  })
+} else {
+  updateOSSClient()
+}
 
 function uploadToOSS(absolutePath = '', remotePath = '', options) {
   var isFile = remotePath.slice(-1) !== '/'
@@ -94,25 +179,35 @@ function uploadToOSS(absolutePath = '', remotePath = '', options) {
 }
 
 function uploadFileOrDir(uploadPath = '', remotePath = '', options) {
-  var absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(uploadPath)
-  if (!fs.existsSync(absolutePath)) {
-    console.error('upload path: ' + uploadPath +  ' is doesn\'t')
-    return
-  }
-  var isDir = fs.statSync(uploadPath).isDirectory()
-
-  if (isDir) {
-    var files = fs.readdirSync(absolutePath)
-    var isFile = remotePath.slice(-1) !== '/'
-    if (isFile) {
-      remotePath = remotePath + '/'
+  function uploadAllPath(uploadPath, remotePath) {
+    var absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath)
+    if (!fs.existsSync(absolutePath)) {
+      console.error('upload path: ' + uploadPath +  ' is doesn\'t')
+      return
     }
-    files.forEach(file => {
-      uploadToOSS(path.join(absolutePath, file), remotePath, options)
-    })
-  } else {
-    uploadToOSS(absolutePath, remotePath, options)
+    var isDir = fs.statSync(uploadPath).isDirectory()
+
+    if (isDir) {
+      var files = fs.readdirSync(absolutePath)
+      var remotePathIsDir = remotePath.slice(-1) !== '/'
+      if (remotePathIsDir) {
+        remotePath = remotePath + '/'
+      }
+      files.forEach(file => {
+        var newPath = path.join(absolutePath, file)
+        var isDir = fs.statSync(newPath).isDirectory()
+        if (isDir) {
+          uploadAllPath(newPath, remotePath + file + '/')
+        } else {
+          uploadToOSS(newPath, remotePath, options)
+        }
+      })
+    } else {
+      uploadToOSS(absolutePath, remotePath, options)
+    }
   }
+
+  uploadAllPath(uploadPath, remotePath)
 }
 
 module.exports = {
