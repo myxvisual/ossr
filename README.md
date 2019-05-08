@@ -31,3 +31,6 @@
 `ossr -l`
 
 `ossr -l folder/`
+
+### Help
+`ossr -h`

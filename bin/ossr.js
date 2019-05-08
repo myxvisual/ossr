@@ -27,11 +27,11 @@ if (fs.existsSync(ossConfigFile)) {
 }
 
 program
-  .version('0.1.0', '-v, --version')
-  .arguments('<local-path> [online-path]')
-  .usage(`${chalk.green('<local-path> [online-path]')} [...options]`)
+  .version('1.0.6', '-v, --version')
+  .arguments('<local-path> [upload-path]')
+  .usage(`${chalk.green('<local-path> [upload-path]')} [...options]`)
 
-  .option('-d, --delete [deletePath]', 'delete remote exists file', function(deletePath) {
+  .option('-d, --delete [deletePath]', 'delete remote exists path', function(deletePath) {
     function deleteAllPath(currDeletePath) {
       if (currDeletePath) {
         var isFile = currDeletePath.slice(-1) !== '/'
@@ -90,17 +90,16 @@ program
     })
   })
 
-  .option('-r, --region [region]', 'set config region')
-  .option('-i, --accessKeyId [accessKeyId]', 'set config accessKeyId')
-  .option('-s, --accessKeySecret [accessKeySecret]', 'set config accessKeySecret')
-  .option('-b, --bucket [bucket]', 'set config bucket')
-  .option('-t, --timeout [timeout]', 'set config timeout')
-  .option('-e, --endpoint [endpoint]', 'set config custom domain name')
+  .option('-r, --region [region]', '[Config] set region')
+  .option('-i, --accessKeyId [accessKeyId]', '[Config] set accessKeyId')
+  .option('-s, --accessKeySecret [accessKeySecret]', '[Config] set accessKeySecret')
+  .option('-b, --bucket [bucket]', '[Config] set bucket')
+  .option('-t, --timeout [timeout]', '[Config] set timeout')
+  .option('-e, --endpoint [endpoint]', '[Config] set domain name')
 
-  .option('-c, --command', 'use command line', function() {})
-  .action(function(localPath, onlinePath) {
+  .action(function(localPath, remotePath) {
     checkConfig(function() {
-      uploadFileOrDir(localPath, (typeof onlinePath === 'string' && onlinePath) ? onlinePath : '/')
+      uploadFileOrDir(localPath, (typeof remotePath === 'string' && remotePath) ? remotePath : '/')
     })
   })
 
