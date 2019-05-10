@@ -38,7 +38,7 @@ program
   .arguments("<local-path> [upload-path]")
   .usage(`${chalk.green("<local-path> [upload-path]")} [...options]`)
 
-  .option("-d, --delete [deletePath]", "delete remote exists path", function(deletePath) {
+  .option("-d, --delete [deletePath]", "delete remote exists path", deletePath => {
     const prompt = new Confirm({
       name: "confirmDelete",
       message: "Make sure to remote the path: " + chalk.red(deletePath)
@@ -46,11 +46,18 @@ program
 
     prompt.run().then(confirm => {
       if (confirm) {
-        ossDelete(deletePath);
+        ossDelete(deletePath, async () => {
+          try {
+            const res = await ossClient.get(deletePath)
+            console.log(chalk.green(`${deletePath} is removed.`));
+          } catch (e) {
+            console.error(chalk.red(`${deletePath} is not removed.`));
+          }
+        });
       }
     });
   })
-  .option("-l, --list [prefix]", "list remote prefix files", function(prefix) {
+  .option("-l, --list [prefix]", "list remote prefix files", prefix => {
     listAll = false;
     listByPrefix(prefix);
   })
@@ -62,21 +69,31 @@ program
   .option("-t, --timeout [timeout]", "[Config] set timeout")
   .option("-e, --endpoint [endpoint]", "[Config] set domain name")
 
-  .action(function(localPath, remotePath) {
-    checkConfig(function() {
+  .action(async (localPath, remotePath) => {
+    try {
+      await checkOSSEnv();
       uploadFileOrDir(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
-    });
+    } catch (err) {}
   });
+program.parse(argv);
 
-function checkConfig(success) {
-  if (ossConfig.accessKeyId && ossConfig.accessKeySecret && ossConfig.bucket ) {
-    if (success && typeof success === "function") {
+if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
+  listByPrefix({ prefix: "" });
+} else {
+  updateOSSClient();
+}
+
+function checkOSSEnv() {
+  return new Promise((resolve, reject) => {
+    if (ossConfig.accessKeyId && ossConfig.accessKeySecret && ossConfig.bucket ) {
       updateOSSClient();
-      success();
+      resolve();
+    } else {
+      const errMsg = "Please set config <accessKeyId> and <accessKeySecret> <bucket>."
+      console.error(errMsg);
+      reject(errMsg);
     }
-  } else {
-    console.error("Please set config <accessKeyId> and <accessKeySecret> <bucket>.");
-  }
+  });
 }
 
 function updateOSSClient() {
@@ -101,16 +118,11 @@ function updateOSSClient() {
     fs.writeFileSync(ossConfigFile,  JSON.stringify(ossConfig, null, 2), { encoding: "utf-8" });
   }
 }
-program.parse(argv);
 
-if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
-  listByPrefix("");
-} else {
-  updateOSSClient();
-}
-
-function listByPrefix(prefix: string, selectedPath?: string) {
-  checkConfig(function() {
+async function listByPrefix(options: { prefix: string, selectedPath?: string; focusPath?: string; }) {
+  const { prefix, selectedPath, focusPath } = options;
+  try {
+    await checkOSSEnv();
     ossClient.list({ prefix, delimiter: "/" }).then(res => {
         if (res.objects || res.prefixes) {
           const prefixes: string[] = res.prefixes || [];
@@ -159,7 +171,12 @@ function listByPrefix(prefix: string, selectedPath?: string) {
                 name: 'rename',
                 value: 'rename',
                 type: 'action'
-              })
+              });
+              typeItems.push({
+                name: 'copy',
+                value: 'copy',
+                type: 'action'
+              });
               typeItems.push({
                 name: "delete",
                 value: "delete",
@@ -177,15 +194,25 @@ function listByPrefix(prefix: string, selectedPath?: string) {
                 break;
               }
               case "action": {
-                item.message = chalk.blue("    └── " + name);
+                switch (item.name) {
+                  case "delete": {
+                    item.message = chalk.red("   └── " + name);
+                    break
+                  }
+                  default: {
+                    item.message = chalk.blue("   ├── " + name);
+                    break
+                  }
+                }
                 break;
               }
               case "info": {
-                item.message = chalk.grey("    └── " + name);
+                item.message = chalk.grey("   ├── " + name);
                 break;
               }
               case "file": {
-                const prefixCharacter = typeItemLastIndex === index ? "└── " : "├── ";
+                const isSelected = name === selectedPath;
+                const prefixCharacter = typeItemLastIndex === index ? "└── " : `${isSelected ? "└──┐" : "├── "}`;
                 item.message = chalk.green(prefixCharacter + name);
                 break;
               }
@@ -209,7 +236,7 @@ function listByPrefix(prefix: string, selectedPath?: string) {
           const prompt = new Select({
             name: null,
             message: prefix,
-            initial: (selectedPath && hadSelectedPath) ? selectedPath : void 0,
+            initial: focusPath || (selectedPath && hadSelectedPath ? selectedPath : void 0),
             choices
           });
           promptProcess(prompt);
@@ -231,23 +258,23 @@ function listByPrefix(prefix: string, selectedPath?: string) {
 
               switch (answer.type) {
                 case "root": {
-                  listByPrefix(prefix);
+                  listByPrefix({ prefix });
                   break;
                 }
                 case "folder": {
                   if (answer.name === "../") {
                     const parentPrefix = getParentPrefix();
-                    listByPrefix(parentPrefix);
+                    listByPrefix({ prefix: parentPrefix });
                   } else {
-                    listByPrefix(answer.name);
+                    listByPrefix({ prefix: answer.name });
                   }
                   break;
                 }
                 case "file": {
                   if (answer.name === selectedPath) {
-                    listByPrefix(prefix);
+                    listByPrefix({ prefix, focusPath: answer.name });
                   } else {
-                    listByPrefix(prefix, answer.name);
+                    listByPrefix({ prefix, selectedPath: answer.name });
                   }
                   break;
                 }
@@ -260,7 +287,47 @@ function listByPrefix(prefix: string, selectedPath?: string) {
                       });
 
                       prompt.run().then(filename => {
-                        listByPrefix(prefix, prefix + filename.trim());
+                        filename = filename.trim();
+                        const newPath = prefix + filename;
+                        const prompt = new Confirm({
+                          name: "confirmRename",
+                          message: "Make sure to rename file : " + chalk.grey(selectedPath) + " --> " + chalk.green(newPath)
+                        });
+
+                        prompt.run().then(async confirm => {
+                          if (confirm) {
+                            let result = await ossClient.copy(newPath, selectedPath);
+                            ossDelete(selectedPath)
+                            listByPrefix({ prefix, selectedPath: newPath });
+                          } else {
+                            listByPrefix({ prefix, selectedPath });
+                          }
+                        });
+                      });
+                      break;
+                    }
+                    case "copy": {
+                      const prompt = new Input({
+                        name: "filename",
+                        message: "input the copy new filename"
+                      });
+
+                      prompt.run().then(filename => {
+                        filename = filename.trim();
+                        const newPath = prefix + filename;
+                        const prompt = new Confirm({
+                          name: "confirmName",
+                          message: "Make sure to copy file : " + chalk.grey(selectedPath) + " --> " + chalk.green(newPath)
+                        });
+
+                        prompt.run().then(async confirm => {
+                          if (confirm) {
+                            let result = await ossClient.copy(newPath, selectedPath);
+                            listByPrefix({ prefix, selectedPath: newPath });
+                          } else {
+                            listByPrefix({ prefix, selectedPath });
+                          }
+                        });
                       });
                       break;
                     }
@@ -273,10 +340,10 @@ function listByPrefix(prefix: string, selectedPath?: string) {
                       prompt.run().then(confirm => {
                         if (confirm) {
                           ossDelete(selectedPath, () => {
-                            listByPrefix(prefix);
+                            listByPrefix({ prefix });
                           });
                         } else {
-                          listByPrefix(prefix);
+                          listByPrefix({ prefix });
                         }
                       });
                       break;
@@ -296,13 +363,14 @@ function listByPrefix(prefix: string, selectedPath?: string) {
             .catch(console.error);
         } else {
           console.error(chalk.red("Notfound by prefix: \"" + prefix + "\""));
-          listByPrefix("");
+          listByPrefix({ prefix: "" });
         }
       })
       .catch(err => {
         console.error(err);
       });
-  });
+  
+  } catch (err) {}
 }
 
 function ossUpload(absolutePath = "", remotePath = "", options) {
@@ -326,18 +394,17 @@ function ossUpload(absolutePath = "", remotePath = "", options) {
     .catch(err => console.error(err));
 }
 
-function ossDelete(deletePath: string, callback?: Function) {
-  function deleteAllPath(currDeletePath) {
+function ossDelete(deletePath: string, susses?: Function, error?: Function) {
+  async function deleteAllPath(currDeletePath) {
     if (currDeletePath) {
       const isFile = currDeletePath.slice(-1) !== "/";
-      if (isFile) {
-        checkConfig(function() {
+      try {
+        await checkOSSEnv();
+        if (isFile) {
           ossClient.delete(currDeletePath).then(res => {
-            if (callback) callback();
+            if (susses) susses();
           });
-        });
-      } else {
-        checkConfig(function() {
+        } else {
           ossClient.list(({ prefix: currDeletePath, delimiter: "/" }))
             .then(res => {
               if (res.objects) {
@@ -354,8 +421,8 @@ function ossDelete(deletePath: string, callback?: Function) {
             .catch(err => {
               console.error(err);
             });
-        });
-      }
+        }
+      } catch (err) {}
     }
   }
 
@@ -366,7 +433,7 @@ function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) {
   function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
-      console.error("upload path: " + uploadPath +  " is doesn't");
+      console.error("upload path: " + uploadPath +  " is doesn't exist.");
       return;
     }
     const isDir = fs.statSync(uploadPath).isDirectory();
