@@ -5,10 +5,11 @@ import fs, { createReadStream } from "fs";
 import chalk from "chalk";
 import program from "commander";
 import OSS from "ali-oss";
-import AgentKeepAlive from "agentkeepalive";
 import promptProcess from "./promptProcess";
+const AgentKeepAlive = require("agentkeepalive");
 const { Select, Confirm, Input } = require("enquirer");
 
+const isCliEnv = require.main === module;
 const argv = process.argv;
 let ossClient: any;
 const ossConfigFile = path.join(__dirname, "ossConfig.json");
@@ -34,7 +35,7 @@ if (fs.existsSync(ossConfigFile)) {
 }
 
 program
-  .version("1.0.8", "-v, --version")
+  .version("1.0.9", "-v, --version")
   .arguments("<local-path> [upload-path]")
   .usage(`${chalk.green("<local-path> [upload-path]")} [...options]`)
 
@@ -77,10 +78,12 @@ program
   });
 program.parse(argv);
 
-if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
-  listByPrefix({ prefix: "" });
-} else {
-  updateOSSClient();
+if (isCliEnv) {
+  if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
+    listByPrefix({ prefix: "" });
+  } else {
+    updateOSSClient();
+  }
 }
 
 function checkOSSEnv() {
@@ -96,11 +99,17 @@ function checkOSSEnv() {
   });
 }
 
-function updateOSSClient() {
- const keys = ["accessKeyId", "accessKeySecret", "region", "bucket", "timeout", "endpoint"];
+function updateOSSClient(newConfig?: typeof ossConfig) {
+  const keys = ["accessKeyId", "accessKeySecret", "region", "bucket", "timeout", "endpoint"];
   keys.forEach(key => {
-    if (program[key]) {
-      ossConfig[key] = program[key];
+    if (isCliEnv) {
+      if (program[key]) {
+        ossConfig[key] = program[key];
+      }
+    } else {
+      if (newConfig && newConfig[key]) {
+        ossConfig[key] = newConfig[key];
+      }
     }
   });
 
@@ -385,7 +394,7 @@ function ossUpload(absolutePath = "", remotePath = "", options) {
     fullPath = remotePath + baseFileName;
   }
 
-  return ossClient.putStream(`${fullPath}`, stream)
+  return ossClient.putStream(fullPath, stream)
     .then(res => {
       console.log("-- local  path is : " + chalk.yellow(absolutePath));
       console.log("-- remote path is : "  + chalk.green(res.res.requestUrls));
@@ -429,7 +438,7 @@ function ossDelete(deletePath: string, susses?: Function, error?: Function) {
   deleteAllPath(deletePath);
 }
 
-function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) {
+async function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) {
   function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
@@ -454,13 +463,19 @@ function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) {
         }
       });
     } else {
-      ossUpload(absolutePath, remotePath, options);
+      return ossUpload(absolutePath, remotePath || path.basename(absolutePath), options);
     }
   }
 
-  uploadAllPath(uploadPath, remotePath);
+  try {
+    const res = await checkOSSEnv()
+    uploadAllPath(uploadPath, remotePath);
+  } catch(e) {}
 }
 
-module.exports = {
-  uploadFileOrDir
-};
+export {
+  uploadFileOrDir,
+  updateOSSClient
+}
+
+export default uploadFileOrDir;
