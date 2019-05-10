@@ -60,7 +60,7 @@ program
   })
   .option("-l, --list [prefix]", "list remote prefix files", prefix => {
     listAll = false;
-    listByPrefix(prefix);
+    listByPrefix({ prefix });
   })
 
   .option("-r, --region [region]", "[Config] set region")
@@ -73,7 +73,7 @@ program
   .action(async (localPath, remotePath) => {
     try {
       await checkOSSEnv();
-      uploadFileOrDir(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
+      ossUpload(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
     } catch (err) {}
   });
 program.parse(argv);
@@ -382,27 +382,6 @@ async function listByPrefix(options: { prefix: string, selectedPath?: string; fo
   } catch (err) {}
 }
 
-function ossUpload(absolutePath = "", remotePath = "", options) {
-  const isFile = remotePath.slice(-1) !== "/";
-  const stream = createReadStream(absolutePath);
-  if (options && options.encoding) {
-    stream.setEncoding(options.encoding);
-  }
-  let fullPath = remotePath;
-  if (!isFile) {
-    const baseFileName = path.basename(absolutePath);
-    fullPath = remotePath + baseFileName;
-  }
-
-  return ossClient.putStream(fullPath, stream)
-    .then(res => {
-      console.log("-- local  path is : " + chalk.yellow(absolutePath));
-      console.log("-- remote path is : "  + chalk.green(res.res.requestUrls));
-      return res;
-    })
-    .catch(err => console.error(err));
-}
-
 function ossDelete(deletePath: string, susses?: Function, error?: Function) {
   async function deleteAllPath(currDeletePath) {
     if (currDeletePath) {
@@ -438,7 +417,28 @@ function ossDelete(deletePath: string, susses?: Function, error?: Function) {
   deleteAllPath(deletePath);
 }
 
-async function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) {
+function uploadFile(absolutePath = "", remotePath = "", options) {
+  const isFile = remotePath.slice(-1) !== "/";
+  const stream = createReadStream(absolutePath);
+  if (options && options.encoding) {
+    stream.setEncoding(options.encoding);
+  }
+  let fullPath = remotePath;
+  if (!isFile) {
+    const baseFileName = path.basename(absolutePath);
+    fullPath = remotePath + baseFileName;
+  }
+
+  return ossClient.putStream(fullPath, stream)
+    .then(res => {
+      console.log("-- local  path is : " + chalk.yellow(absolutePath));
+      console.log("-- remote path is : "  + chalk.green(res.res.requestUrls));
+      return res;
+    })
+    .catch(err => console.error(err));
+}
+
+async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
   function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
@@ -459,11 +459,11 @@ async function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) 
         if (isDir) {
           uploadAllPath(newPath, remotePath + file + "/");
         } else {
-          ossUpload(newPath, remotePath, options);
+          uploadFile(newPath, remotePath, options);
         }
       });
     } else {
-      return ossUpload(absolutePath, remotePath || path.basename(absolutePath), options);
+      return uploadFile(absolutePath, remotePath || path.basename(absolutePath), options);
     }
   }
 
@@ -474,8 +474,7 @@ async function uploadFileOrDir(uploadPath = "", remotePath = "", options?: any) 
 }
 
 export {
-  uploadFileOrDir,
-  updateOSSClient
+  ossUpload as upload,
+  ossDelete as delete,
+  updateOSSClient as setConfig,
 }
-
-export default uploadFileOrDir;
