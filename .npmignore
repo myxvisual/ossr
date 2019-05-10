@@ -1,2 +1,2 @@
 bin/**/ossConfig.json
-src/
+src/**/*
