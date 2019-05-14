@@ -39,16 +39,16 @@ async function test() {
 test()
 
 ```
-
 ## CLI
 ## Graph
-![list](https://raw.githubusercontent.com/myxvisual/ossr/master/images/list.gif)
 `ossr`
 `ossr -l`
 `ossr -l folder/`
 
+![list](https://raw.githubusercontent.com/myxvisual/ossr/master/images//list.gif)
+
 ### Upload
-![upload](https://raw.githubusercontent.com/myxvisual/ossr/master/images/upload.gif)
+![upload](https://raw.githubusercontent.com/myxvisual/ossr/master/images//upload.gif)
 **Upload file to root path**
 `ossr ./localFile.jpg` ------> `https://xxxx/localFile.jpg`
 **Upload folder to root path**
@@ -59,7 +59,7 @@ test()
 `ossr ./localFolder onlineFolder/` ------> `https://xxxx/onlineFolder/<localFolder**>`
 
 ### Delete
-![delete](https://raw.githubusercontent.com/myxvisual/ossr/master/images/delete.gif)
+![delete](https://raw.githubusercontent.com/myxvisual/ossr/master/images//delete.gif)
 `ossr -d remoteFileOrFolder`
 
 ### Help
