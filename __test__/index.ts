@@ -4,10 +4,10 @@ async function test() {
     // ossr.setConfig({
     //     accessKeyId: "",
     //     accessKeySecret: ""
-    // })
+    // });
 
-    let existRes = false
-    const uploadRes = await ossr.ossUpload("../bin", "ossr/")
+    let existRes = false;
+    const uploadRes = await ossr.ossUpload("../bin", "ossr/");
     // console.log(uploadRes);
     existRes = await ossr.ossIsExist("ossr/ossr.js");
     // console.log(existRes);

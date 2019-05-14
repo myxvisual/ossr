@@ -1,7 +1,14 @@
 {
   "name": "ossr",
   "version": "1.0.9",
-  "description": "",
+  "description": "The ali-oss cli",
+  "keywords": [
+    "oss",
+    "cli",
+    "file",
+    "aliyun",
+    "ali-oss"
+  ],
   "main": "./bin/ossr.js",
   "scripts": {
     "start": "tsc -w",
@@ -13,9 +20,16 @@
     "ossr": "./bin/ossr.js"
   },
   "engines": {
-    "node": ">=4.0"
+    "node": ">=8.0"
   },
-  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/myxvisual/ossr/issues"
+  },
+  "homepage": "https://github.com/myxvisual/ossr",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myxvisual/ossr.git"
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {
