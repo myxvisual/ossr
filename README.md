@@ -23,17 +23,17 @@ async function test() {
     //     accessKeySecret: ""
     // })
 
-    try {
-        const uploadRes = await ossr.ossUpload("../bin", "ztest/")
-        console.log(uploadRes);
-        const deleteRes = await ossr.ossDelete("ztest/");
-        console.log(deleteRes);
-    } catch(e) {
-        console.error(e)
-    }
+    let existRes = false
+    const uploadRes = await ossr.ossUpload("../bin", "ossr/")
+    // console.log(uploadRes);
+    existRes = await ossr.ossIsExist("ossr/ossr.js");
+    // console.log(existRes);
+    const deleteRes = await ossr.ossDelete("ossr/");
+    // console.log("deleteRes", deleteRes);
 }
 
 test()
+
 ```
 
 ## CLI

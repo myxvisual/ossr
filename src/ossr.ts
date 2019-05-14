@@ -7,13 +7,20 @@ import chalk from "chalk";
 import program from "commander";
 import OSS from "ali-oss";
 import promptProcess from "./promptProcess";
-polyfill();
-
+import request from "request";
 const AgentKeepAlive = require("agentkeepalive");
 const { Select, Confirm, Input } = require("enquirer");
+polyfill();
 
 const isCliEnv = require.main === module;
 const argv = process.argv;
+const pathLogs = {
+  exist:    (pathName: string) => console.log(`-- exist    : ${chalk.green(pathName)}`),
+  notExist: (pathName: string) => console.log(`-- notExist : ${chalk.red(pathName)}`),
+  delete:   (pathName: string) => console.log(`-- delete   : ${chalk.red(pathName)}`),
+  local:    (pathName: string) => console.log(`-- local    : ${chalk.grey(pathName)}`),
+  remote:   (pathName: string) => console.log(`-- remote   : ${chalk.green(pathName)}`),
+};
 let ossClient: any;
 const ossConfigFile = path.join(__dirname, "ossConfig.json");
 let ossConfig: {
@@ -50,12 +57,7 @@ program
 
     prompt.run().then(async confirm => {
       if (confirm) {
-        try {
-          await ossDelete(deletePath)
-          console.log(chalk.green(`${deletePath} is removed.`));
-        } catch (e) {
-          console.error(chalk.red(`${deletePath} is not removed.`));
-        }
+        await ossDelete(deletePath);
       }
     });
   })
@@ -387,46 +389,35 @@ async function ossList(options: { prefix: string, selectedPath?: string; focusPa
 }
 
 async function ossDelete(deletePath: string) {
-  const pros: Promise<any>[] = [];
   async function deleteAllPath(currDeletePath) {
     async function removeSingleFile(removePath: string) {
-      await ossClient.delete(removePath);
-      console.log(`-- delete path is : `, chalk.red(removePath));
+      pathLogs.delete(removePath);
+      return ossClient.delete(removePath);
     }
 
     if (currDeletePath) {
       const isFile = currDeletePath.slice(-1) !== "/";
-      try {
-        await checkOSSEnv();
-        if (isFile) {
-          removeSingleFile(currDeletePath);
-        } else {
-          ossClient.list(({ prefix: currDeletePath, delimiter: "/" }))
-            .then(res => {
-              if (res.objects) {
-                res.objects.forEach(async obj => {
-                  removeSingleFile(obj.name);
-                });
-              }
-              if (res.prefixes) {
-                res.prefixes.forEach(newPath => {
-                  deleteAllPath(newPath);
-                });
-              }
-            })
-            .catch(err => {
-              console.error(err);
-            });
+      await checkOSSEnv();
+      if (isFile) {
+        return removeSingleFile(currDeletePath);
+      } else {
+        const { objects, prefixes } = await ossClient.list(({ prefix: currDeletePath, delimiter: "/" }))
+        if (objects) {
+          return Promise.resolve(Promise.all(
+            objects.map(obj => removeSingleFile(obj.name))
+          ));
         }
-      } catch (err) {}
+        if (prefixes) {
+          return Promise.resolve(Promise.all(
+            prefixes.map(newPath => deleteAllPath(newPath))
+          ));
+        }
+      }
     }
   }
 
-  try {
-    await checkOSSEnv()
-    deleteAllPath(deletePath);
-    return Promise.all(pros);
-  } catch(e) {}
+  await checkOSSEnv();
+  return deleteAllPath(deletePath);
 }
 
 function ossUploadFile(absolutePath = "", remotePath = "", options) {
@@ -443,20 +434,19 @@ function ossUploadFile(absolutePath = "", remotePath = "", options) {
 
   return ossClient.putStream(fullPath, stream)
     .then(res => {
-      console.log("-- local  path is : " + chalk.yellow(absolutePath));
-      console.log("-- remote path is : "  + chalk.green(res.res.requestUrls));
+      pathLogs.local(absolutePath);
+      pathLogs.remote(res.res.requestUrls);
       return res;
     })
     .catch(err => console.error(err)) as Promise<any>;
 }
 
 async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
-  const pros: Promise<any>[] = [];
   function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
       console.error("upload path: " + uploadPath +  " is doesn't exist.");
-      return;
+      return Promise.resolve(null);
     }
     const isDir = fs.statSync(uploadPath).isDirectory();
 
@@ -466,38 +456,52 @@ async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
       if (remotePathIsDir) {
         remotePath = remotePath + "/";
       }
-      return files.map(file => {
+      return Promise.resolve(Promise.all(files.map(file => {
         const newPath = path.join(absolutePath, file);
         const isDir = fs.statSync(newPath).isDirectory();
         if (isDir) {
-          uploadAllPath(newPath, remotePath + file + "/");
+          return uploadAllPath(newPath, remotePath + file + "/");
         } else {
-          pros.push(
-            ossUploadFile(newPath, remotePath, options)
-          );
+          return ossUploadFile(newPath, remotePath, options)
         }
-      });
+      })));
     } else {
-      pros.push(
-        ossUploadFile(absolutePath, remotePath || path.basename(absolutePath), options)
-      );
+      return ossUploadFile(absolutePath, remotePath || path.basename(absolutePath), options)
     }
   }
 
-  try {
-    await checkOSSEnv()
-    uploadAllPath(uploadPath, remotePath);
-    return Promise.all(pros);
-  } catch(e) {}
+  await checkOSSEnv();
+  return uploadAllPath(uploadPath, remotePath);
 }
 
-const mod = {
-  upload: ossUpload,
-  delete: ossDelete,
-  setConfig: updateOSSClient,
-};
+async function ossIsExist(path: string): Promise<boolean> {
+  await checkOSSEnv();
+  const cdnUrl = await ossClient.getObjectUrl(path);
+  const pro = new Promise((resolve, reject) => {
+    const req = request.head(cdnUrl, (err, res, body) => {
+      if (res) {
+        if (res.statusCode === 200) {
+          pathLogs.exist(cdnUrl);
+          resolve(true);
+        } else {
+          resolve(false);
+          pathLogs.notExist(cdnUrl);
+        }
+      } else {
+        resolve(false);
+      }
+    });
+    req.on("error", () => {
+      resolve(false);
+    });
+    req.end();
+  });
 
-export default mod;
+  return pro as Promise<boolean>;
+}
+
 export { ossUpload };
+export { ossList };
 export { ossDelete };
+export { ossIsExist };
 export { updateOSSClient as setConfig };
