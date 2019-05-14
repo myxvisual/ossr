@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 "use strict";
 import * as path from "path";
+import { polyfill } from "es6-promise";
 import fs, { createReadStream } from "fs";
 import chalk from "chalk";
 import program from "commander";
 import OSS from "ali-oss";
 import promptProcess from "./promptProcess";
+polyfill();
+
 const AgentKeepAlive = require("agentkeepalive");
 const { Select, Confirm, Input } = require("enquirer");
 
@@ -45,22 +48,20 @@ program
       message: "Make sure to remote the path: " + chalk.red(deletePath)
     });
 
-    prompt.run().then(confirm => {
+    prompt.run().then(async confirm => {
       if (confirm) {
-        ossDelete(deletePath, async () => {
-          try {
-            const res = await ossClient.get(deletePath)
-            console.log(chalk.green(`${deletePath} is removed.`));
-          } catch (e) {
-            console.error(chalk.red(`${deletePath} is not removed.`));
-          }
-        });
+        try {
+          await ossDelete(deletePath)
+          console.log(chalk.green(`${deletePath} is removed.`));
+        } catch (e) {
+          console.error(chalk.red(`${deletePath} is not removed.`));
+        }
       }
     });
   })
   .option("-l, --list [prefix]", "list remote prefix files", prefix => {
     listAll = false;
-    listByPrefix({ prefix });
+    ossList({ prefix });
   })
 
   .option("-r, --region [region]", "[Config] set region")
@@ -73,14 +74,14 @@ program
   .action(async (localPath, remotePath) => {
     try {
       await checkOSSEnv();
-      ossUpload(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
+      await ossUpload(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
     } catch (err) {}
   });
 program.parse(argv);
 
 if (isCliEnv) {
   if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
-    listByPrefix({ prefix: "" });
+    ossList({ prefix: "" });
   } else {
     updateOSSClient();
   }
@@ -128,11 +129,14 @@ function updateOSSClient(newConfig?: typeof ossConfig) {
   }
 }
 
-async function listByPrefix(options: { prefix: string, selectedPath?: string; focusPath?: string; }) {
+async function ossList(options: { prefix: string, selectedPath?: string; focusPath?: string; }) {
+  const pros: Promise<any>[] = [];
   const { prefix, selectedPath, focusPath } = options;
   try {
     await checkOSSEnv();
-    ossClient.list({ prefix, delimiter: "/" }).then(res => {
+    const pro = ossClient.list({ prefix, delimiter: "/" });
+    pros.push(pro);
+    pro.then(res => {
         if (res.objects || res.prefixes) {
           const prefixes: string[] = res.prefixes || [];
           const objects: any[] = res.objects || [];
@@ -267,23 +271,23 @@ async function listByPrefix(options: { prefix: string, selectedPath?: string; fo
 
               switch (answer.type) {
                 case "root": {
-                  listByPrefix({ prefix });
+                  ossList({ prefix });
                   break;
                 }
                 case "folder": {
                   if (answer.name === "../") {
                     const parentPrefix = getParentPrefix();
-                    listByPrefix({ prefix: parentPrefix });
+                    ossList({ prefix: parentPrefix });
                   } else {
-                    listByPrefix({ prefix: answer.name });
+                    ossList({ prefix: answer.name });
                   }
                   break;
                 }
                 case "file": {
                   if (answer.name === selectedPath) {
-                    listByPrefix({ prefix, focusPath: answer.name });
+                    ossList({ prefix, focusPath: answer.name });
                   } else {
-                    listByPrefix({ prefix, selectedPath: answer.name });
+                    ossList({ prefix, selectedPath: answer.name });
                   }
                   break;
                 }
@@ -305,11 +309,11 @@ async function listByPrefix(options: { prefix: string, selectedPath?: string; fo
 
                         prompt.run().then(async confirm => {
                           if (confirm) {
-                            let result = await ossClient.copy(newPath, selectedPath);
-                            ossDelete(selectedPath)
-                            listByPrefix({ prefix, selectedPath: newPath });
+                            await ossClient.copy(newPath, selectedPath);
+                            await ossDelete(selectedPath)
+                            ossList({ prefix, selectedPath: newPath });
                           } else {
-                            listByPrefix({ prefix, selectedPath });
+                            ossList({ prefix, selectedPath });
                           }
                         });
                       });
@@ -331,10 +335,10 @@ async function listByPrefix(options: { prefix: string, selectedPath?: string; fo
 
                         prompt.run().then(async confirm => {
                           if (confirm) {
-                            let result = await ossClient.copy(newPath, selectedPath);
-                            listByPrefix({ prefix, selectedPath: newPath });
+                            await ossClient.copy(newPath, selectedPath);
+                            ossList({ prefix, selectedPath: newPath });
                           } else {
-                            listByPrefix({ prefix, selectedPath });
+                            ossList({ prefix, selectedPath });
                           }
                         });
                       });
@@ -346,13 +350,12 @@ async function listByPrefix(options: { prefix: string, selectedPath?: string; fo
                         message: "Make sure to remote the path: " + chalk.red(selectedPath)
                       });
 
-                      prompt.run().then(confirm => {
+                      prompt.run().then(async confirm => {
                         if (confirm) {
-                          ossDelete(selectedPath, () => {
-                            listByPrefix({ prefix });
-                          });
+                          await ossDelete(selectedPath);
+                          ossList({ prefix })
                         } else {
-                          listByPrefix({ prefix });
+                          ossList({ prefix });
                         }
                       });
                       break;
@@ -372,32 +375,37 @@ async function listByPrefix(options: { prefix: string, selectedPath?: string; fo
             .catch(console.error);
         } else {
           console.error(chalk.red("Notfound by prefix: \"" + prefix + "\""));
-          listByPrefix({ prefix: "" });
+          ossList({ prefix: "" });
         }
       })
       .catch(err => {
         console.error(err);
       });
-  
   } catch (err) {}
+
+  return pros;
 }
 
-function ossDelete(deletePath: string, susses?: Function, error?: Function) {
+async function ossDelete(deletePath: string) {
+  const pros: Promise<any>[] = [];
   async function deleteAllPath(currDeletePath) {
+    async function removeSingleFile(removePath: string) {
+      await ossClient.delete(removePath);
+      console.log(`-- delete path is : `, chalk.red(removePath));
+    }
+
     if (currDeletePath) {
       const isFile = currDeletePath.slice(-1) !== "/";
       try {
         await checkOSSEnv();
         if (isFile) {
-          ossClient.delete(currDeletePath).then(res => {
-            if (susses) susses();
-          });
+          removeSingleFile(currDeletePath);
         } else {
           ossClient.list(({ prefix: currDeletePath, delimiter: "/" }))
             .then(res => {
               if (res.objects) {
-                res.objects.forEach(obj => {
-                  ossClient.delete(obj.name);
+                res.objects.forEach(async obj => {
+                  removeSingleFile(obj.name);
                 });
               }
               if (res.prefixes) {
@@ -414,10 +422,14 @@ function ossDelete(deletePath: string, susses?: Function, error?: Function) {
     }
   }
 
-  deleteAllPath(deletePath);
+  try {
+    await checkOSSEnv()
+    deleteAllPath(deletePath);
+    return Promise.all(pros);
+  } catch(e) {}
 }
 
-function uploadFile(absolutePath = "", remotePath = "", options) {
+function ossUploadFile(absolutePath = "", remotePath = "", options) {
   const isFile = remotePath.slice(-1) !== "/";
   const stream = createReadStream(absolutePath);
   if (options && options.encoding) {
@@ -435,10 +447,11 @@ function uploadFile(absolutePath = "", remotePath = "", options) {
       console.log("-- remote path is : "  + chalk.green(res.res.requestUrls));
       return res;
     })
-    .catch(err => console.error(err));
+    .catch(err => console.error(err)) as Promise<any>;
 }
 
 async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
+  const pros: Promise<any>[] = [];
   function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
@@ -453,28 +466,38 @@ async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
       if (remotePathIsDir) {
         remotePath = remotePath + "/";
       }
-      files.forEach(file => {
+      return files.map(file => {
         const newPath = path.join(absolutePath, file);
         const isDir = fs.statSync(newPath).isDirectory();
         if (isDir) {
           uploadAllPath(newPath, remotePath + file + "/");
         } else {
-          uploadFile(newPath, remotePath, options);
+          pros.push(
+            ossUploadFile(newPath, remotePath, options)
+          );
         }
       });
     } else {
-      return uploadFile(absolutePath, remotePath || path.basename(absolutePath), options);
+      pros.push(
+        ossUploadFile(absolutePath, remotePath || path.basename(absolutePath), options)
+      );
     }
   }
 
   try {
-    const res = await checkOSSEnv()
+    await checkOSSEnv()
     uploadAllPath(uploadPath, remotePath);
+    return Promise.all(pros);
   } catch(e) {}
 }
 
-export {
-  ossUpload as upload,
-  ossDelete as delete,
-  updateOSSClient as setConfig,
-}
+const mod = {
+  upload: ossUpload,
+  delete: ossDelete,
+  setConfig: updateOSSClient,
+};
+
+export default mod;
+export { ossUpload };
+export { ossDelete };
+export { updateOSSClient as setConfig };
