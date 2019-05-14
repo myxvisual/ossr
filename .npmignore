@@ -2,3 +2,4 @@ bin/**/ossConfig.json
 src/**/*
 tsconfig.json
 __test/**/*
+images/**/*
