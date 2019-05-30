@@ -2,7 +2,6 @@
 import fs, { createReadStream } from "fs";
 import OSS from "ali-oss";
 import * as path from "path";
-import request from "request";
 import chalk from "chalk";
 
 import promptProcess from "./promptProcess";
@@ -36,7 +35,9 @@ if (fs.existsSync(ossConfigFile)) {
   }
 }
 const AgentKeepAlive = require("agentkeepalive");
-const { Select, Confirm, Input } = require("enquirer");
+const Enquirer = require("enquirer");
+const enquirer = new Enquirer();
+const { Select, Confirm, Input } = Enquirer;
 const getPathLogs = () => disabledLog ? {
   exist:    () => {},
   notExist: () => {},
@@ -136,24 +137,34 @@ export async function ossList(options: { prefix: string, selectedPath?: string; 
             if (selectedPath && selectedPath === item.name) {
               hadSelectedPath = true;
               typeItems.push({
-                name: item.url,
-                value: item.url,
-                type: "info"
+                name: 'edit',
+                value: 'edit content',
+                type: 'action'
               });
               typeItems.push({
                 name: 'rename',
-                value: 'rename',
+                value: 'rename to',
                 type: 'action'
               });
               typeItems.push({
                 name: 'copy',
-                value: 'copy',
+                value: 'copy to',
+                type: 'action'
+              });
+              typeItems.push({
+                name: 'move to',
+                value: 'move to',
                 type: 'action'
               });
               typeItems.push({
                 name: "delete",
-                value: "delete",
+                value: "delete file",
                 type: "action"
+              });
+              typeItems.push({
+                name: item.url,
+                value: item.url,
+                type: "info"
               });
             }
           });
@@ -169,7 +180,7 @@ export async function ossList(options: { prefix: string, selectedPath?: string; 
               case "action": {
                 switch (item.name) {
                   case "delete": {
-                    item.message = chalk.red("   └── " + name);
+                    item.message = chalk.red("   ├── " + name);
                     break
                   }
                   default: {
@@ -180,7 +191,7 @@ export async function ossList(options: { prefix: string, selectedPath?: string; 
                 break;
               }
               case "info": {
-                item.message = chalk.grey("   ├── " + name);
+                item.message = chalk.grey("   └── " + name);
                 break;
               }
               case "file": {
@@ -253,6 +264,9 @@ export async function ossList(options: { prefix: string, selectedPath?: string; 
                 }
                 case "action": {
                   switch (answerStr) {
+                    case "edit": {
+                      break;
+                    }
                     case "rename": {
                       const prompt = new Input({
                         name: "filename",
@@ -442,16 +456,16 @@ export async function ossUpload(uploadPath = "", remotePath = "", options?: any)
 export async function ossIsExist(path: string): Promise<boolean> {
   await checkOSSEnv();
   const pro = new Promise(async (resolve, reject) => {
+    const cdnUrl = await ossClient.getObjectUrl(path);
     try {
       const result = await ossClient.get(path);
-      pathLogs.exist(path);
+      pathLogs.exist(cdnUrl);
       resolve(result.res.status === 200);
     } catch (e) {
-      pathLogs.notExist(path);
+      pathLogs.notExist(cdnUrl);
       resolve(false);
     }
 
-    // const cdnUrl = await ossClient.getObjectUrl(path);
     // const req = request.head(cdnUrl, (err, res, body) => {
     //   if (res) {
     //     if (res.statusCode === 200) {
