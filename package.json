@@ -1,6 +1,6 @@
 {
   "name": "ossr",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "The ali-oss cli",
   "keywords": [
     "oss",
@@ -37,8 +37,10 @@
     "ali-oss": "^6.1.1",
     "chalk": "^2.4.2",
     "commander": "^2.20.0",
+    "cos-nodejs-sdk-v5": "^2.5.9",
     "enquirer": "^2.3.0",
     "es6-promise": "^4.2.6",
+    "qiniu": "^7.2.1",
     "request": "^2.88.0"
   },
   "devDependencies": {
