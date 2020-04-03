@@ -43,7 +43,7 @@ const getPathLogs = () => disabledLog ? {
   notExist: () => {},
   delete:   () => {},
   local:    () => {},
-  remote:   () => {},
+  remote:   () => {}
 } : {
   exist:    (pathName: string) => console.log(`-- exist    : ${chalk.green(pathName)}`),
   notExist: (pathName: string) => console.log(`-- notExist : ${chalk.red(pathName)}`),
@@ -138,27 +138,27 @@ export async function ossList(options: { prefix: string, selectedPath?: string; 
               hadSelectedPath = true;
               typeItems.push({
                 name: 'edit',
-                value: 'edit content',
+                value: 'edit',
                 type: 'action'
               });
               typeItems.push({
                 name: 'rename',
-                value: 'rename to',
+                value: 'rename',
                 type: 'action'
               });
               typeItems.push({
                 name: 'copy',
-                value: 'copy to',
+                value: 'copy',
                 type: 'action'
               });
               typeItems.push({
-                name: 'move to',
-                value: 'move to',
+                name: 'move',
+                value: 'move',
                 type: 'action'
               });
               typeItems.push({
                 name: "delete",
-                value: "delete file",
+                value: "delete",
                 type: "action"
               });
               typeItems.push({

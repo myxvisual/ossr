@@ -20,25 +20,9 @@ const {
 polyfill();
 
 export const isCliEnv = require.main === module;
+
 const argv = process.argv;
 let listAll = true;
-
-
-if (isCliEnv) {
-  for (const key of configKeys) {
-    if (program[key]) {
-      ossConfig[key] = program[key];
-    }
-  }
-  if (argv.includes("--silence")) {
-    setToSilence(true);
-  }
-  if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
-    ossList({ prefix: "" });
-  } else {
-    updateOSSClient();
-  }
-}
 
 program
   .version("1.1.0", "-v, --version")
@@ -81,7 +65,24 @@ program
       await ossUpload(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
     } catch (err) {}
   });
+
 program.parse(argv);
+if (isCliEnv) {
+  for (const key of configKeys) {
+    if (program[key]) {
+      ossConfig[key] = program[key];
+    }
+  }
+  if (argv.includes("--silence")) {
+    setToSilence(true);
+  }
+  if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
+    ossList({ prefix: "" });
+  } else {
+    updateOSSClient();
+  }
+}
+
 
 export { ossUpload };
 export { ossList };

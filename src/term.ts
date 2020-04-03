@@ -1,9 +1,8 @@
-const readline = require('readline').createInterface({
-  input: process.stdin,
-  output: process.stdout
-})
+var readline = require('readline'),
+rl = readline.createInterface(process.stdin, process.stdout);
 
-readline.question(`What's your name?`, (name) => {
-  console.log(`Hi ${name}!`)
-  readline.close()
-})
+rl.question('What is your favorite food? ', function(answer) {
+  console.log('Oh, so your favorite food is ' + answer);
+});
+
+rl.write('Pizza');
