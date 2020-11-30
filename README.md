@@ -16,8 +16,36 @@
 
 `ossr -i <accessKeyId> -s <accessKeySecret> -b <bucket> -e <endpoint> -r <region> -t <timeout>`
 
-# Usage
-## Module
+## CLI Usage
+### Graph
+`ossr`
+`ossr -l`
+`ossr -l folder/`
+![list](https://raw.githubusercontent.com/myxvisual/ossr/master/images//list.gif)
+
+### Upload
+
+#### Upload file to root pat
+`ossr ./localFile.jpg` ------> `https://xxxx/localFile.jpg`
+
+#### Upload folder to root path
+`ossr ./localFolder` ------> `https://xxxx/onlineFolder/<localFolder**>`
+
+#### Upload file with rename
+`ossr ./localFile.jpg customFolder/renamedFile.jpg` ------> `https://xxxx/customFolder/renamedFile.jpg`
+
+#### Upload folder with rename
+`ossr ./localFolder onlineFolder/` ------> `https://xxxx/onlineFolder/<localFolder**>`
+![upload](https://raw.githubusercontent.com/myxvisual/ossr/master/images//upload.gif)
+
+#### Delete
+`ossr -d remoteFileOrFolder`
+![delete](https://raw.githubusercontent.com/myxvisual/ossr/master/images//delete.gif)
+
+### Help
+`ossr -h`
+
+## Module Usage
 ``` js
 import * as ossr from "../bin/ossr";
 
@@ -37,37 +65,4 @@ async function test() {
 }
 
 test()
-
 ```
-## CLI
-## Graph
-`ossr`
-`ossr -l`
-`ossr -l folder/`
-
-![list](https://raw.githubusercontent.com/myxvisual/ossr/master/images//list.gif)
-
-### Upload
-![upload](https://raw.githubusercontent.com/myxvisual/ossr/master/images//upload.gif)
-**Upload file to root path**
-
-`ossr ./localFile.jpg` ------> `https://xxxx/localFile.jpg`
-
-**Upload folder to root path**
-
-`ossr ./localFolder` ------> `https://xxxx/onlineFolder/<localFolder**>`
-
-**Upload file with rename**
-
-`ossr ./localFile.jpg customFolder/renamedFile.jpg` ------> `https://xxxx/customFolder/renamedFile.jpg`
-
-**Upload folder with rename**
-
-`ossr ./localFolder onlineFolder/` ------> `https://xxxx/onlineFolder/<localFolder**>`
-
-### Delete
-![delete](https://raw.githubusercontent.com/myxvisual/ossr/master/images//delete.gif)
-`ossr -d remoteFileOrFolder`
-
-### Help
-`ossr -h`

@@ -67,7 +67,7 @@ export function checkOSSEnv() {
   });
 }
 
-export const configKeys = ["accessKeyId", "accessKeySecret", "region", "bucket", "timeout", "endpoint"];
+export const configKeys = ["accessKeyId", "accessKeySecret", "region", "bucket", "timeout", "endpoint", "cname"];
 export function updateOSSClient(newConfig?: typeof ossConfig) {
   configKeys.forEach(key => {
     if (newConfig && newConfig[key]) {
@@ -80,9 +80,10 @@ export function updateOSSClient(newConfig?: typeof ossConfig) {
       timeout: ossConfig.timeout as any
     });
   }
-  if (ossConfig.endpoint) {
-    ossConfig.cname = true;
-  }
+  // TODO: add cname
+  // if (ossConfig.cname) {
+  //   ossConfig.cname = true;
+  // }
 
   if (ossConfig.accessKeyId && ossConfig.accessKeySecret) {
     ossClient = new OSS(ossConfig);
