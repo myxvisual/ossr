@@ -393,32 +393,62 @@ export async function ossDelete(deletePath: string) {
   return deleteAllPath(deletePath);
 }
 
-export function ossUploadFile(absolutePath = "", remotePath = "", options) {
+
+let checkpoint;
+async function resumeUpload(absoluteFilePath = "", objectName = "") {
+  let result: any;
+  // retry 10 times
+  for (let i = 0; i < 10; i++) {
+      try {
+          result = await ossClient.multipartUpload(objectName, absoluteFilePath, {
+              checkpoint,
+              async progress(percentage, cpt) {
+                  console.log(percentage); // Object 的上传进度。
+                  
+                  console.log({ ...cpt, doneParts: null, donePartsSize: cpt && cpt.doneParts && cpt.doneParts.length  }); // 分片上传的断点信息。
+                  checkpoint = cpt;
+              },
+          });
+          console.log(result);
+          break; // break if success
+      } catch (e) {
+          console.log(e);
+      }
+  }
+
+  return result;
+}
+
+export async function streamUpload(absoluteFilePath = "", objectName = "", options: any) {
+  const stream = createReadStream(absoluteFilePath, options);
+  if (options && options.encoding) {
+    stream.setEncoding(options.encoding);
+  }
+  return ossClient.putStream(objectName, stream)
+    .then(res => {
+      pathLogs.local(absoluteFilePath);
+      pathLogs.remote(res.res.requestUrls);
+      return res;
+    })
+    .catch(err => console.error(err)) as Promise<any>;
+}
+
+export async function ossUploadFile(absoluteFilePath = "", remotePath = "", options: any) {
   const isFile = remotePath.slice(-1) !== "/";
-  const extName = path.extname(absolutePath);
+  const extName = path.extname(absoluteFilePath);
   if ([".yml"].includes(extName)) {
     if (!options) {
       options = {};
     }
     options.encoding = "utf8";
   }
-  const stream = createReadStream(absolutePath, options);
-  if (options && options.encoding) {
-    stream.setEncoding(options.encoding);
-  }
-  let fullPath = remotePath;
+  let objectName = remotePath;
   if (!isFile) {
-    const baseFileName = path.basename(absolutePath);
-    fullPath = remotePath + baseFileName;
+    const baseFileName = path.basename(absoluteFilePath);
+    objectName = remotePath + baseFileName;
   }
 
-  return ossClient.putStream(fullPath, stream)
-    .then(res => {
-      pathLogs.local(absolutePath);
-      pathLogs.remote(res.res.requestUrls);
-      return res;
-    })
-    .catch(err => console.error(err)) as Promise<any>;
+  return await resumeUpload(absoluteFilePath, objectName);
 }
 
 export async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
