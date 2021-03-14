@@ -6,13 +6,13 @@ import program from "commander";
 const { Confirm } = require("enquirer");
 import * as oss from "./oss";
 const {
-  ossList,
-  ossDelete,
+  listObject,
+  deleteObject,
   ossIsExist,
   ossUpload,
-  ossUploadFile,
-  checkOSSEnv,
-  updateOSSClient,
+  uploadFile,
+  checkEnv,
+  updateClient,
   ossConfig,
   configKeys,
   setToSilence
@@ -37,13 +37,13 @@ program
 
     prompt.run().then(async confirm => {
       if (confirm) {
-        await ossDelete(deletePath);
+        await deleteObject(deletePath);
       }
     });
   })
   .option(`-l, --list ${chalk.blue("[prefix]")}`, `${chalk.green("[Action]")} list remote prefix files`, prefix => {
     listAll = false;
-    ossList({ prefix });
+    listObject({ prefix });
   })
   .option(`--exist ${chalk.blue("[prefix]")}`, `${chalk.green("[Action]")} check exist remote prefix files`, prefix => {
     listAll = false;
@@ -61,7 +61,7 @@ program
 
   .action(async (localPath, remotePath) => {
     try {
-      await checkOSSEnv();
+      await checkEnv();
       await ossUpload(localPath, (typeof remotePath === "string" && remotePath) ? remotePath : "/");
     } catch (err) {}
   });
@@ -77,15 +77,15 @@ if (isCliEnv) {
     setToSilence(true);
   }
   if ((listAll && argv.includes("-l")) || (listAll && argv.length < 3)) {
-    ossList({ prefix: "" });
+    listObject({ prefix: "" });
   } else {
-    updateOSSClient();
+    updateClient();
   }
 }
 
 
 export { ossUpload };
-export { ossList };
-export { ossDelete };
+export { listObject as ossList };
+export { deleteObject as ossDelete };
 export { ossIsExist };
-export { updateOSSClient as setConfig };
+export { updateClient as setConfig };

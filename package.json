@@ -34,7 +34,7 @@
   "license": "ISC",
   "dependencies": {
     "agentkeepalive": "^4.0.2",
-    "ali-oss": "^6.11.2",
+    "ali-oss": "^6.13.2",
     "chalk": "^2.4.2",
     "commander": "^2.20.0",
     "cos-nodejs-sdk-v5": "^2.5.9",
