@@ -15,6 +15,14 @@ type Checkpoint = {
   uploadId: string,
   doneParts: { number: number; etag: string; }[];
 }
+export function ensureDirectoryExistence(filePath: string) {
+  const dirname = path.dirname(filePath);
+  if (fs.existsSync(dirname)) {
+    return true;
+  }
+  ensureDirectoryExistence(dirname);
+  fs.mkdirSync(dirname);
+}
 
 export function setToSilence(bool: boolean) {
   disabledLog = bool;
@@ -108,7 +116,7 @@ export async function listObject(options: { prefix: string, selectedPath?: strin
   const { prefix, selectedPath, focusPath } = options;
   try {
     await checkEnv();
-    const pro = ossClient.list({ prefix, delimiter: "/", "max-keys": 999 }, {});
+    const pro = ossClient.list({ prefix, delimiter: "/", "max-keys": 10e2 }, {});
     pros.push(pro);
     pro.then(res => {
       if (res.objects || res.prefixes) {
@@ -462,7 +470,6 @@ export class ProgressBar {
  * 
  * @source https://github.com/ali-sdk/ali-oss/blob/5ed82a0db33550018bf1cd40462b3d3feedec694/lib/browser/managed-upload.js#L35
  */
-// TODO
 async function uploadByResume(absoluteFilePath = "", objectName = "") {
   let result: OSS.MultipartUploadResult;
   let checkpoint: Checkpoint;
@@ -523,7 +530,7 @@ export async function uploadFile(absoluteFilePath = "", remotePath = "", options
   return await uploadByResume(absoluteFilePath, objectName);
 }
 
-export async function ossUpload(uploadPath = "", remotePath = "", options?: any) {
+export async function ossUpload(localPath = "", remotePath = "", options?: any) {
   function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
@@ -553,7 +560,41 @@ export async function ossUpload(uploadPath = "", remotePath = "", options?: any)
   }
 
   await checkEnv();
-  return uploadAllPath(uploadPath, remotePath);
+  return uploadAllPath(localPath, remotePath);
+}
+
+export async function downloadFileByStream(objectName: string, localFile: string) {
+  let result: OSS.GetStreamResult;
+  try {
+    result = await ossClient.getStream(objectName);
+    let writeStream = fs.createWriteStream(localFile);
+    result.stream.pipe(writeStream);
+  } catch (e) {
+    logger.log(e);
+  }
+
+  return result;
+}
+
+export async function ossDownload(remotePath = "", localPath = "") {
+  localPath = path.isAbsolute(localPath) ? localPath : path.join(process.cwd(), localPath);
+  const localPathIsDir = fs.existsSync(localPath) && fs.statSync(localPath).isDirectory();
+  const remotePathIsDir = remotePath.endsWith("/");
+  await checkEnv();
+  if (remotePathIsDir) {
+    const res = await ossClient.list({ prefix: remotePath, delimiter: "/", "max-keys": 10e2 }, {});
+    if (res.objects && Array.isArray(res.objects)) {
+      for (const object of res.objects) {
+        const localFile = path.join(localPath, object.name);
+        ossDownload(object.name, localFile);
+      }
+    }
+  } else {
+    const remoteBaseName = path.basename(remotePath);
+    const localFile = localPathIsDir ? path.join(localPath, remoteBaseName) : localPath;
+    ensureDirectoryExistence(localFile);
+    await downloadFileByStream(remotePath, localFile);
+  }
 }
 
 export async function ossIsExist(path: string): Promise<boolean> {
