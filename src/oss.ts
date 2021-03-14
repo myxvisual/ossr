@@ -4,6 +4,7 @@ import OSS from "ali-oss";
 import * as path from "path";
 import chalk from "chalk";
 import * as readline from "readline";
+import * as crypto from "crypto";
 
 import promptProcess from "./promptProcess";
 
@@ -381,6 +382,20 @@ export async function listObject(options: { prefix: string, selectedPath?: strin
   return pros;
 }
 
+
+export async function getRemoteMd5(objectName: string) {
+  let md5: string = null;
+  try {
+    const result = await (ossClient as any).getObjectTagging(objectName);
+    md5 = result?.tag?.["Content-MD5"] || null;
+  } catch (error) {}
+  return md5;
+}
+
+export async function getLocalMd5(filename: string) {
+  return crypto.createHash("md5").update(fs.readFileSync(filename)).digest("hex").toString();
+}
+
 export async function deleteObject(deletePath: string) {
   async function deleteAllPath(currDeletePath) {
     async function removeSingleFile(removePath: string) {
@@ -394,7 +409,7 @@ export async function deleteObject(deletePath: string) {
       if (isFile) {
         return removeSingleFile(currDeletePath);
       } else {
-        const { objects, prefixes } = await ossClient.list({ prefix: currDeletePath, delimiter: "/", "max-keys": 999 }, {});
+        const { objects, prefixes } = await ossClient.list({ prefix: currDeletePath, delimiter: "/", "max-keys": 10e2 }, {});
         if (objects) {
           return Promise.resolve(Promise.all(
             objects.map(obj => removeSingleFile(obj.name))
@@ -474,20 +489,26 @@ async function uploadByResume(absoluteFilePath = "", objectName = "") {
   let result: OSS.MultipartUploadResult;
   let checkpoint: Checkpoint;
   const fileKbSize = fs.statSync(absoluteFilePath).size / 10e2;
-  logger.log({ fileName: absoluteFilePath, fileSize: fileKbSize });
+  // logger.log({ fileName: absoluteFilePath, fileSize: fileKbSize });
 
   // retry 10 times
+  const localMd5 = await getLocalMd5(absoluteFilePath);
+  const remoteMd5 = await getRemoteMd5(objectName);
+  if (localMd5 === remoteMd5) return;
+  const headers = {
+    "x-oss-tagging": `Content-MD5=${localMd5}` // "TagA=A&TagB=B"
+  };
   for (let i = 0; i < 10; i++) {
     try {
-      const bar = new ProgressBar("  uploading [:bar] :rate/kps :percent :etas", { total: fileKbSize, width: 30 });
+      const bar = new ProgressBar(`  uploading [${absoluteFilePath}/${fileKbSize}kb] [:bar] :rate/kps :percent :etas`, { total: fileKbSize, width: 30 });
       result = await ossClient.multipartUpload(objectName, absoluteFilePath, {
         checkpoint,
         async progress(percent: number, cpt: Checkpoint) {
           bar.tick(percent * fileKbSize);
           checkpoint = cpt;
         },
+        headers
       });
-      logger.log(result);
       // break if success
       break;
     } catch (e) {
@@ -565,6 +586,10 @@ export async function ossUpload(localPath = "", remotePath = "", options?: any) 
 
 export async function downloadFileByStream(objectName: string, localFile: string) {
   let result: OSS.GetStreamResult;
+  const remoteMd5 = await getRemoteMd5(objectName);
+  const localMd5 = await getLocalMd5(localFile);
+
+  if (fs.existsSync(localFile) && remoteMd5 === localMd5) return;
   try {
     result = await ossClient.getStream(objectName);
     let writeStream = fs.createWriteStream(localFile);
