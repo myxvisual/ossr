@@ -497,14 +497,17 @@ async function uploadByResume(absoluteFilePath = "", objectName = "") {
 
   const localMd5 = await getLocalMd5(absoluteFilePath);
   const remoteMd5 = await getRemoteMd5(objectName);
+  function logByUploaded() {
+    logger.log(`\n${path.basename(absoluteFilePath)} is uploaded.`);
+  }
   if (localMd5 === remoteMd5) {
-    logger.log(`${path.basename(absoluteFilePath)} is uploaded.`);
+    logByUploaded();
     return null;
   }
+
   const headers = {
     "x-oss-tagging": `Content-MD5=${localMd5}` // "TagA=A&TagB=B"
-  };
-  
+  }
 
   // retry 10 times
   for (let i = 0; i < 10; i++) {
@@ -525,6 +528,7 @@ async function uploadByResume(absoluteFilePath = "", objectName = "") {
     }
   }
 
+  logByUploaded();
   return result;
 }
 
@@ -606,16 +610,39 @@ export async function downloadFileByStream(objectName: string, localFile: string
   const remoteMd5 = await getRemoteMd5(objectName);
   const localMd5 = await getLocalMd5(localFile);
 
-  if (fs.existsSync(localFile) && remoteMd5 === localMd5) return;
-  try {
-    result = await ossClient.getStream(objectName);
-    let writeStream = fs.createWriteStream(localFile);
-    result.stream.pipe(writeStream);
-  } catch (e) {
-    logger.log(e);
+  function logByDownloaded() {
+    logger.log(`\n${path.basename(localFile)} is downloaded.`);
   }
 
-  return result;
+  if (fs.existsSync(localFile) && remoteMd5 === localMd5) {
+    logByDownloaded();
+    return null;
+  }
+  
+  return new Promise(async (resolve, reject) => {
+    try {
+      result = await ossClient.getStream(objectName);
+      let writeStream = fs.createWriteStream(localFile);
+      result.stream.pipe(writeStream);
+      const fileKbSize = Number(result.res.headers["content-length"]) / 1000;
+      let currKbSize = 0;
+      const bar = new ProgressBar(`  downloading [${path.basename(localFile)}/${fileKbSize}kb] [:bar] :rate/kps :percent :etas`, { total: fileKbSize, width: 30 });
+      result.stream.on("data", chunk => {
+        currKbSize += chunk.length / 1000;
+        bar.tick(currKbSize);
+      })
+      result.stream.on("end", () => {
+        logByDownloaded();
+        resolve(null);
+      });
+      result.stream.on("error", (e) => {
+        resolve(null);
+        logger.error(e);
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 export async function ossDownload(remotePath = "", localPath = "") {
@@ -628,10 +655,15 @@ export async function ossDownload(remotePath = "", localPath = "") {
   if (remotePathIsDir) {
     const res = await ossClient.list({ prefix: remotePath, delimiter: "/", "max-keys": 10e2 }, {});
     if (res.objects && Array.isArray(res.objects)) {
-      for (const object of res.objects) {
+      const run = async () => {
+        const object = res.objects.shift();
         const localFile = path.join(localPath, path.basename(object.name));
         ossDownload(object.name, localFile);
+        if (res.objects.length > 0) {
+          await run();
+        }
       }
+      await run();
     }
   } else {
     const remoteBaseName = path.basename(remotePath);
