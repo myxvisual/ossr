@@ -393,7 +393,11 @@ export async function getRemoteMd5(objectName: string) {
 }
 
 export async function getLocalMd5(filename: string) {
-  return crypto.createHash("md5").update(fs.readFileSync(filename)).digest("hex").toString();
+  let md5: string = null;
+  try {
+    md5 = crypto.createHash("md5").update(fs.readFileSync(filename)).digest("hex").toString();
+  } catch (error) {}
+  return md5;
 }
 
 export async function deleteObject(deletePath: string) {
@@ -603,6 +607,8 @@ export async function downloadFileByStream(objectName: string, localFile: string
 
 export async function ossDownload(remotePath = "", localPath = "") {
   localPath = path.isAbsolute(localPath) ? localPath : path.join(process.cwd(), localPath);
+  ensureDirectoryExistence(localPath);
+  
   const localPathIsDir = fs.existsSync(localPath) && fs.statSync(localPath).isDirectory();
   const remotePathIsDir = remotePath.endsWith("/");
   await checkEnv();
@@ -610,14 +616,13 @@ export async function ossDownload(remotePath = "", localPath = "") {
     const res = await ossClient.list({ prefix: remotePath, delimiter: "/", "max-keys": 10e2 }, {});
     if (res.objects && Array.isArray(res.objects)) {
       for (const object of res.objects) {
-        const localFile = path.join(localPath, object.name);
+        const localFile = path.join(localPath, path.basename(object.name));
         ossDownload(object.name, localFile);
       }
     }
   } else {
     const remoteBaseName = path.basename(remotePath);
     const localFile = localPathIsDir ? path.join(localPath, remoteBaseName) : localPath;
-    ensureDirectoryExistence(localFile);
     await downloadFileByStream(remotePath, localFile);
   }
 }
