@@ -495,16 +495,21 @@ async function uploadByResume(absoluteFilePath = "", objectName = "") {
   const fileKbSize = fs.statSync(absoluteFilePath).size / 10e2;
   // logger.log({ fileName: absoluteFilePath, fileSize: fileKbSize });
 
-  // retry 10 times
   const localMd5 = await getLocalMd5(absoluteFilePath);
   const remoteMd5 = await getRemoteMd5(objectName);
-  if (localMd5 === remoteMd5) return;
+  if (localMd5 === remoteMd5) {
+    logger.log(`${path.basename(absoluteFilePath)} is uploaded.`);
+    return null;
+  }
   const headers = {
     "x-oss-tagging": `Content-MD5=${localMd5}` // "TagA=A&TagB=B"
   };
+  
+
+  // retry 10 times
   for (let i = 0; i < 10; i++) {
     try {
-      const bar = new ProgressBar(`  uploading [${absoluteFilePath}/${fileKbSize}kb] [:bar] :rate/kps :percent :etas`, { total: fileKbSize, width: 30 });
+      const bar = new ProgressBar(`  uploading [${path.basename(absoluteFilePath)}/${fileKbSize}kb] [:bar] :rate/kps :percent :etas`, { total: fileKbSize, width: 30 });
       result = await ossClient.multipartUpload(objectName, absoluteFilePath, {
         checkpoint,
         async progress(percent: number, cpt: Checkpoint) {
@@ -556,7 +561,7 @@ export async function uploadFile(absoluteFilePath = "", remotePath = "", options
 }
 
 export async function ossUpload(localPath = "", remotePath = "", options?: any) {
-  function uploadAllPath(uploadPath, remotePath) {
+  async function uploadAllPath(uploadPath, remotePath) {
     const absolutePath = path.isAbsolute(uploadPath) ? uploadPath : path.join(process.cwd(), uploadPath);
     if (!fs.existsSync(absolutePath)) {
       logger.error("upload path: " + uploadPath + " is doesn't exist.");
@@ -570,22 +575,30 @@ export async function ossUpload(localPath = "", remotePath = "", options?: any) 
       if (remotePathIsDir) {
         remotePath = remotePath + "/";
       }
-      return Promise.resolve(Promise.all(files.map(file => {
+      
+      const run = async () => {
+        const file = files.shift();
         const newPath = path.join(absolutePath, file);
         const isDir = fs.statSync(newPath).isDirectory();
+        let res: any = null;
         if (isDir) {
-          return uploadAllPath(newPath, remotePath + file + "/");
+          res = await uploadAllPath(newPath, remotePath + file + "/");
         } else {
-          return uploadFile(newPath, remotePath, options)
+          res = await uploadFile(newPath, remotePath, options)
         }
-      })));
+        if (files.length > 0) {
+          await run();
+        }
+        return res;
+      }
+      await run();
     } else {
-      return uploadFile(absolutePath, remotePath || path.basename(absolutePath), options)
+      return await uploadFile(absolutePath, remotePath || path.basename(absolutePath), options)
     }
   }
 
   await checkEnv();
-  return uploadAllPath(localPath, remotePath);
+  return await uploadAllPath(localPath, remotePath);
 }
 
 export async function downloadFileByStream(objectName: string, localFile: string) {
