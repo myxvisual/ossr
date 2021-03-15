@@ -607,6 +607,7 @@ export async function ossUpload(localPath = "", remotePath = "", options?: any) 
 
 export async function downloadFileByStream(objectName: string, localFile: string) {
   let result: OSS.GetStreamResult;
+  ensureDirectoryExistence(localFile);
   const remoteMd5 = await getRemoteMd5(objectName);
   const localMd5 = await getLocalMd5(localFile);
 
@@ -642,34 +643,62 @@ export async function downloadFileByStream(objectName: string, localFile: string
     } catch (e) {
       reject(e);
     }
+    return result;
   });
+  
+}
+
+export async function downloadByDir(remotePath = "", localPath = "") {
+  localPath = path.isAbsolute(localPath) ? localPath : path.join(process.cwd(), localPath);
+  const res = await ossClient.list({ prefix: remotePath, delimiter: "/", "max-keys": 10e2 }, {});
+  const objects = res?.objects;
+  
+  const promFuncs = [];
+  if (objects) {
+    const run = async () => {
+      const object = res.objects.shift();
+      const objectName = object.name;
+      const objectIsDir = objectName.endsWith("/");
+      const localFile = objectIsDir ? (localPath + objectName.replace(remotePath, "")) : path.join(localPath, path.basename(objectName));
+
+      if (objectIsDir) {
+        if (remotePath !== objectName) {
+          const nwePromFuncs = await downloadByDir(objectName, localFile);
+          console.log(nwePromFuncs);
+          promFuncs.push(...promFuncs);
+        }
+      } else {
+        promFuncs.push(async () => {
+          return await ossDownload(objectName, localFile);
+        });
+      }
+      if (res.objects.length > 0) {
+        await run();
+      }
+    }
+    await run();
+
+    while (promFuncs.length > 1) {
+      await promFuncs[0]();
+      promFuncs.shift();
+    }
+
+  }
+
+  return promFuncs;
 }
 
 export async function ossDownload(remotePath = "", localPath = "") {
-  localPath = path.isAbsolute(localPath) ? localPath : path.join(process.cwd(), localPath);
-  ensureDirectoryExistence(localPath);
-  
-  const localPathIsDir = fs.existsSync(localPath) && fs.statSync(localPath).isDirectory();
-  const remotePathIsDir = remotePath.endsWith("/");
   await checkEnv();
+  const remotePathIsDir = remotePath.endsWith("/");
+
   if (remotePathIsDir) {
-    const res = await ossClient.list({ prefix: remotePath, delimiter: "/", "max-keys": 10e2 }, {});
-    if (res.objects && Array.isArray(res.objects)) {
-      const run = async () => {
-        const object = res.objects.shift();
-        const localFile = path.join(localPath, path.basename(object.name));
-        ossDownload(object.name, localFile);
-        if (res.objects.length > 0) {
-          await run();
-        }
-      }
-      await run();
-    }
+    await downloadByDir(remotePath, localPath);
   } else {
-    const remoteBaseName = path.basename(remotePath);
-    const localFile = localPathIsDir ? path.join(localPath, remoteBaseName) : localPath;
-    await downloadFileByStream(remotePath, localFile);
+    await downloadFileByStream(remotePath, localPath);
   }
+
+  return null;
 }
 
 export async function ossIsExist(path: string): Promise<boolean> {
