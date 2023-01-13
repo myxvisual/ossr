@@ -42,7 +42,7 @@
     "es6-promise": "^4.2.6",
     "qiniu": "^7.2.1",
     "request": "^2.88.0",
-    "terminal-kit": "^1.28.0"
+    "terminal-kit": "^2.1.8"
   },
   "devDependencies": {
     "@types/ali-oss": "^6.0.3",
